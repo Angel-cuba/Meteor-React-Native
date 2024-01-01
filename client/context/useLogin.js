@@ -1,74 +1,105 @@
-import { View, Text } from 'react-native';
-import React from 'react';
+import { useReducer, useEffect, useMemo } from 'react';
 import Meteor from '@meteorrn/core';
-import { Accounts } from '@meteorrn/core';
+
+const initialState = {
+  isLoading: true,
+  isSignout: false,
+  userToken: null,
+};
+
+const reducer = (state, action) => {
+  switch (action.type) {
+    case 'RESTORE_TOKEN':
+      return {
+        ...state,
+        userToken: action.token,
+        isLoading: false,
+      };
+    case 'SIGN_IN':
+      return {
+        ...state,
+        isSignOut: false,
+        userToken: action.token,
+      };
+    case 'SIGN_OUT':
+      return {
+        ...state,
+        isSignout: true,
+        userToken: null,
+      };
+  }
+};
+
+const Data = Meteor.getData();
 
 export const useLogin = () => {
-  const [state, dispatch] = React.useReducer(
-    (prevState, action) => {
-      switch (action.type) {
-        case 'RESTORE_TOKEN':
-          return {
-            ...prevState,
-            userToken: action.token,
-          };
-        case 'SIGN_IN':
-          return {
-            ...prevState,
-            userToken: action.token,
-          };
-        case 'SIGN_OUT':
-          return {
-            ...prevState,
-            userToken: null,
-          };
-      }
-    },
-    {
-      isLoading: true,
-      userToken: null,
-    }
-  );
+  const [state, dispatch] = useReducer(reducer, initialState, undefined);
 
-  const authContextValue = React.useMemo(
+  // Case 1: restore token already exists
+  // MeteorRN loads the token on connection automatically,
+  // in case it exists, but we need to "know" that for our auth workflow
+  useEffect(() => {
+    const handleOnLogin = () => dispatch({ type: 'RESTORE_TOKEN', token: Meteor.getAuthToken() });
+    Data.on('onLogin', handleOnLogin);
+    return () => Data.off('onLogin', handleOnLogin);
+  }, []);
+
+  const authContext = useMemo(
     () => ({
       signIn: ({ email, password, onError }) => {
-        console.log('🚀 ~ file: useLogin.js:36 ~ useLogin ~ password:', password);
-        console.log('🚀 ~ file: useLogin.js:36 ~ useLogin ~ email:', email);
-        Meteor.loginWithPassword(email, password, (err, result) => {
+        Meteor.loginWithPassword(email, password, async (err) => {
           if (err) {
+            if (err.message === 'Match failed [400]') {
+              err.message = 'Login failed, please check your credentials and retry.';
+            }
             return onError(err);
           }
-
-          Meteor._handleLoginCallback(err, result);
-
-          const token = Accounts._storedLoginToken();
-          dispatch({ type: 'SIGN_IN', token });
-        }); 
+          const token = Meteor.getAuthToken();
+          const type = 'SIGN_IN';
+          dispatch({ type, token });
+        });
       },
-      signUp: ({ email, password, onError }) => {
-        console.log('🚀 ~ file: useLogin.js:49 ~ useLogin ~ password:', password);
-        console.log('🚀 ~ file: useLogin.js:49 ~ useLogin ~ email:', email);
-        Meteor.call('register', { email, password }, (err, result) => {
+      signOut: ({ onError }) => {
+        Meteor.logout((err) => {
           if (err) {
             return onError(err);
-          } else {
-            // Meteor.loginWithPassword(email, password, (err) => {
-            //   if (err) {
-            //     return onError(err);
-            //   }
-            Meteor._handleLoginCallback(err, result);
-
-            const token = Meteor.getAuthToken();
-            console.log('🚀 ~ file: useLogin.js:56 ~ //Meteor.loginWithPassword ~ token:', token);
-            dispatch({ type: 'SIGN_IN', token });
-            // });
           }
+          dispatch({ type: 'SIGN_OUT' });
+        });
+      },
+      signUp: ({ email, password, firstName, lastName, onError }) => {
+        const signupArgs = { email, password, firstName, lastName, loginImmediately: true };
+
+        Meteor.call('registerNewUser', signupArgs, (err, credentials) => {
+          if (err) {
+            return onError(err);
+          }
+
+          // this sets the { id, token } values internally to make sure
+          // our calls to Meteor endpoints will be authenticated
+          Meteor._handleLoginCallback(err, credentials);
+
+          // from here this is the same routine as in signIn
+          const token = Meteor.getAuthToken();
+          const type = 'SIGN_IN';
+          dispatch({ type, token });
+        });
+      },
+      deleteAccount: ({ onError }) => {
+        Meteor.call('deleteAccount', (err) => {
+          if (err) {
+            return onError(err);
+          }
+
+          // removes all auth-based data from client
+          // as if we would call signOut
+          Meteor.handleLogout();
+          dispatch({ type: 'SIGN_OUT' });
         });
       },
     }),
     []
   );
 
-  return { state, authContextValue };
+  return { state, authContext };
 };
