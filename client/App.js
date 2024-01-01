@@ -1,18 +1,24 @@
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View } from 'react-native';
-import { UseConnection } from './hooks/useConnection';
-import Navigator from './navigator/Navigator';
+import { Navigator } from './navigator/Navigator';
+import { ErrorMessage } from './src/components/ErrorMessage';
+import { useConnection } from './hooks/useConnection';
 
 export default function App() {
-  const { connection } = UseConnection();
+  const { connected, connectionError } = useConnection();
 
-  if (!connection) {
+  if (!connected) {
     return (
       <View style={styles.container}>
-        <Text>Loading...</Text>
+        <Text>Connecting to server...</Text>
       </View>
     );
   }
+
+  if (connectionError) {
+    return <ErrorMessage error={connectionError} />;
+  }
+
   return <Navigator />;
 }
 
