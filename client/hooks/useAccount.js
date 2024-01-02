@@ -8,7 +8,7 @@ export const useAccount = () => {
 
   useTracker(() => {
     const reactiveUser = Meteor.user()
-    if (reactiveUser !== user) {
+    if (reactiveUser === user) {
       setUser(reactiveUser)
     }
   })
