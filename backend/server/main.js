@@ -1,9 +1,6 @@
 import { Meteor } from 'meteor/meteor';
 import { LinksCollection } from '/imports/api/links';
-import { check, Match } from 'meteor/check';
-import { Accounts } from 'meteor/accounts-base';
-import { Users } from '../imports/api/links';
-import '../imports/startup/server/accounts'
+import '../imports/startup/server/accounts';
 
 async function insertLink({ title, url }) {
   await LinksCollection.insertAsync({ title, url, createdAt: new Date() });
